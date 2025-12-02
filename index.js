@@ -222,8 +222,8 @@ const requoteIfNeeded = (market) => {
     const pos = positions[market] || 0;
     if (!lastPositions[market]) lastPositions[market] = pos;
     const lastPos = lastPositions[market];
-    console.log('POS', pos, lastPos, Math.abs(pos - lastPos) / lastPos);
-    if (Math.abs(pos - lastPos) / lastPos > 1 * PARAMS[market].hard_limit / 100) { // if inventory varies by more than 1% of hard limit
+    // console.log('POS', pos, lastPos, Math.abs(pos - lastPos));
+    if (Math.abs(pos - lastPos) > 1 * PARAMS[market].hard_limit / 100) { // if inventory varies by more than 1% of hard limit
         console.log('REQUOTING POS', pos, lastPos, Math.abs(pos - lastPos) / lastPos);
         lastPositions[market] = pos;
         quote(market);
