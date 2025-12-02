@@ -3,6 +3,7 @@ import { streamMidPrice, streamUserPosition, placeOrders, streamUserOpenOrders, 
 /*
 TODO:
 - ? it will only requote if ATR changes by more than atr_change_trigger which is 50%, but if ATR remains high on a pump or dump in price, it is high volatility and should requote faster than waiting for the 1minute to be up
+- requoting based on position is not working
 - cancel all orders when app is killed or closed
 - the active candle in ATR is skewing the calculation, because it could just be starting so High-Low = 0 - done, 
         -> used previous candle high/low and current candle close
@@ -14,7 +15,7 @@ TODO:
 
 const PARAMS = {
     BTC: {
-        base_spread: 0.0003,
+        base_spread: 0.0005,
         layers: 5,
         distance_multiplier: 1.55,
         size_multiplier: 1.4,
