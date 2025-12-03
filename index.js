@@ -3,6 +3,7 @@ import { streamMidPrice, streamUserPosition, placeOrders, streamUserOpenOrders, 
 /*
 TODO:
 - ? it will only requote if ATR changes by more than atr_change_trigger which is 50%, but if ATR remains high on a pump or dump in price, it is high volatility and should requote faster than waiting for the 1minute to be up
+- skewed distances can be negative if skew > 1
 - requoting based on position is not working
 - cancel all orders when app is killed or closed
 - the active candle in ATR is skewing the calculation, because it could just be starting so High-Low = 0 - done, 
@@ -15,7 +16,7 @@ TODO:
 
 const PARAMS = {
     BTC: {
-        base_spread: 0.0005,
+        base_spread: 0.0006,
         layers: 5,
         distance_multiplier: 1.55,
         size_multiplier: 1.4,
@@ -26,7 +27,8 @@ const PARAMS = {
         soft_limit: 25000, // in USD
         skew_adjustment: 2,
         scale_adjustment: 0.001,
-        candle_lookback: 3 // minutes
+        candle_lookback: 14, // minutes, also ema_period
+        trend_factor: 100 // Impact of trend on skew (high value because (price-ema)/price is small)
     }
 };
 
@@ -37,6 +39,7 @@ let candles = {}; // BTC: [{t,o,h,l,c},...] (one minute candles ordered from old
 let lastATRs = {}; // BTC: atr // used to check if volatility has increased to trigger requote
 let lastPositions = {}; // BTC: pos // used to check if inventory has changed to trigger requote
 let lastQuoteTimes = {}; // BTC: time // used to check if more than 30s has passed to trigger requote
+let lastQuoteMidPrices = {}; // BTC: price // used to check if price has changed to trigger requote
 
 const computeATR = (market) => {
     const _candles = candles[market];
@@ -48,21 +51,42 @@ const computeATR = (market) => {
     return vol / (_candles.length - 1);
 }
 
+const computeEMA = (market) => {
+    const _candles = candles[market];
+    if (!_candles || _candles.length < 2) return null;
+    const k = 2 / (_candles.length + 1);
+    let ema = _candles[0].c;
+    for (let i = 1; i < _candles.length; i++) {
+        ema = _candles[i].c * k + ema * (1 - k);
+    }
+    return ema;
+}
+
 const skewDistances = (market, distances, isBidSide) => {
     const pos = positions[market] || 0;
     const hardLimit = PARAMS[market].hard_limit;
-    const skew = PARAMS[market].skew_adjustment * pos / hardLimit; // based on inventory
+
+    // Trend Skew
+    const ema = computeEMA(market);
+    let trendSkew = 0;
+    if (ema) {
+        // if price > ema (uptrend), trendSkew is positive.
+        trendSkew = (midPrices[market] - ema) / midPrices[market] * PARAMS[market].trend_factor;
+    }
+    console.log('ema', ema, 'trendSkew', trendSkew);
+
+    const skew = (PARAMS[market].skew_adjustment * pos / hardLimit) - trendSkew; // based on inventory + trend
     const skewedDistances = [];
     for (let i = 0; i < distances.length; i++) {
         if (skew > 0) { // we are long, so we want to close our longs more. pull asks closer, bids wider
             if (isBidSide) {
                 skewedDistances.push(distances[i] * (1 + skew));
             } else {
-                skewedDistances.push(distances[i] * (1 - skew));
+                skewedDistances.push(distances[i] * Math.max(0, 1 - skew));
             }
         } else { // we are short, so we want to close our shorts more. pull bids closer, asks wider
             if (isBidSide) {
-                skewedDistances.push(distances[i] * (1 - Math.abs(skew)));
+                skewedDistances.push(distances[i] * Math.max(0, 1 - Math.abs(skew)));
             } else {
                 skewedDistances.push(distances[i] * (1 + Math.abs(skew)));
             }
@@ -190,6 +214,7 @@ const quote = async (market) => {
     await placeOrders(market, bids, asks);
 
     lastQuoteTimes[market] = Date.now();
+    lastQuoteMidPrices[market] = midPrices[market];
     runningQuote[market] = false;
 
 }
@@ -204,6 +229,17 @@ const requoteIfNeeded = (market) => {
 
     if (!lastQuoteTimes[market]) {
         console.log('REQUOTING lastQuoteTimes');
+        quote(market);
+        return;
+    }
+
+    // requote if price changes by more than 0.1%
+    if (!lastQuoteMidPrices[market]) lastQuoteMidPrices[market] = midPrices[market];
+    const lastPrice = lastQuoteMidPrices[market];
+    const currentPrice = midPrices[market];
+    if (Math.abs(currentPrice - lastPrice) / lastPrice > 0.001) {
+        console.log('REQUOTING PRICE', currentPrice, lastPrice);
+        lastQuoteMidPrices[market] = currentPrice;
         quote(market);
         return;
     }
@@ -231,9 +267,9 @@ const requoteIfNeeded = (market) => {
         return;
     }
 
-    // requote if more than 60s passes
+    // requote if more than 5min passes
     const lastQuoteTime = lastQuoteTimes[market] || Date.now();
-    if (Date.now() - lastQuoteTime > 60 * 1000) {
+    if (Date.now() - lastQuoteTime > 5 * 60 * 1000) {
         console.log('REQUOTING TIME', Date.now() - lastQuoteTime);
         quote(market);
         return;
