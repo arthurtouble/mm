@@ -4,7 +4,7 @@ import { streamMidPrice, streamUserPosition, placeOrders, streamUserOpenOrders, 
 TODO:
 - ? it will only requote if ATR changes by more than atr_change_trigger which is 50%, but if ATR remains high on a pump or dump in price, it is high volatility and should requote faster than waiting for the 1minute to be up
 - skewed distances can be negative if skew > 1
-- requoting based on position is not working
+- upgrade logic, refresh rate, layers, etc. to not be picked off by volatility, that is what's causing most losses
 - cancel all orders when app is killed or closed
 - the active candle in ATR is skewing the calculation, because it could just be starting so High-Low = 0 - done, 
         -> used previous candle high/low and current candle close
@@ -16,18 +16,19 @@ TODO:
 
 const PARAMS = {
     BTC: {
-        base_spread: 0.0006,
-        layers: 5,
+        base_spread: 0.0005,
+        layers: 3,
         distance_multiplier: 1.55,
         size_multiplier: 1.4,
-        atr_multiplier: 0.5, // how much impact ATR has on the quoted spread
-        atr_change_trigger: 0.5, // an ATR change higher than this % triggers a requote
+        atr_multiplier: 0.25, // how much impact ATR has on the quoted spread
+        atr_change_trigger: 0.2, // an ATR change higher than this % triggers a requote
+        price_change_trigger: 0.0005, // a price change higher than this % triggers a requote
         base_size: 100, // in USD
-        hard_limit: 50000, // in USD
-        soft_limit: 25000, // in USD
+        hard_limit: 10000, // in USD
+        soft_limit: 5000, // in USD
         skew_adjustment: 2,
         scale_adjustment: 0.001,
-        candle_lookback: 14, // minutes, also ema_period
+        candle_lookback: 7, // minutes, also ema_period
         trend_factor: 100 // Impact of trend on skew (high value because (price-ema)/price is small)
     }
 };
@@ -233,11 +234,11 @@ const requoteIfNeeded = (market) => {
         return;
     }
 
-    // requote if price changes by more than 0.1%
+    // requote if price changes by more than price_change_trigger
     if (!lastQuoteMidPrices[market]) lastQuoteMidPrices[market] = midPrices[market];
     const lastPrice = lastQuoteMidPrices[market];
     const currentPrice = midPrices[market];
-    if (Math.abs(currentPrice - lastPrice) / lastPrice > 0.001) {
+    if (Math.abs(currentPrice - lastPrice) / lastPrice > PARAMS[market].price_change_trigger) {
         console.log('REQUOTING PRICE', currentPrice, lastPrice);
         lastQuoteMidPrices[market] = currentPrice;
         quote(market);
@@ -260,16 +261,16 @@ const requoteIfNeeded = (market) => {
     if (!lastPositions[market]) lastPositions[market] = pos;
     const lastPos = lastPositions[market];
     // console.log('POS', pos, lastPos, Math.abs(pos - lastPos));
-    if (Math.abs(pos - lastPos) > 1 * PARAMS[market].hard_limit / 100) { // if inventory varies by more than 1% of hard limit
-        console.log('REQUOTING POS', pos, lastPos, Math.abs(pos - lastPos) / lastPos);
+    if (Math.abs(pos - lastPos) >= PARAMS[market].base_size) { // if inventory varies by more than base size
+        console.log('REQUOTING POS', pos, lastPos, Math.abs(pos - lastPos));
         lastPositions[market] = pos;
         quote(market);
         return;
     }
 
-    // requote if more than 5min passes
+    // requote if more than 20s passes
     const lastQuoteTime = lastQuoteTimes[market] || Date.now();
-    if (Date.now() - lastQuoteTime > 5 * 60 * 1000) {
+    if (Date.now() - lastQuoteTime > 20 * 1000) {
         console.log('REQUOTING TIME', Date.now() - lastQuoteTime);
         quote(market);
         return;
