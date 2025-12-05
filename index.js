@@ -22,7 +22,7 @@ const PARAMS = {
         size_multiplier: 1.4,
         atr_multiplier: 0.25, // how much impact ATR has on the quoted spread
         atr_change_trigger: 0.1, // an ATR change higher than this % triggers a requote
-        price_change_trigger: 0.0003, // a price change higher than this % triggers a requote
+        price_change_trigger: 0.0005, // a price change higher than this % triggers a requote
         base_size: 100, // in USD
         hard_limit: 10000, // in USD
         soft_limit: 5000, // in USD
