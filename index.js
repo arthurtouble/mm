@@ -16,11 +16,11 @@ TODO:
 
 const PARAMS = {
     BTC: {
-        base_spread: 0.0005,
+        base_spread: 0.0006,
         layers: 3,
-        distance_multiplier: 1.55,
-        size_multiplier: 1.4,
-        atr_multiplier: 0.25, // how much impact ATR has on the quoted spread
+        distance_multiplier: 1.5,
+        size_multiplier: 1.5,
+        atr_multiplier: 0.5, // how much impact ATR has on the quoted spread
         atr_change_trigger: 0.1, // an ATR change higher than this % triggers a requote
         price_change_trigger: 0.0005, // a price change higher than this % triggers a requote
         base_size: 100, // in USD
@@ -28,7 +28,7 @@ const PARAMS = {
         soft_limit: 5000, // in USD
         skew_adjustment: 2,
         scale_adjustment: 0.001,
-        candle_lookback: 14, // minutes, also ema_period
+        candle_lookback: 7, // minutes, also ema_period
         trend_factor: 100 // Impact of trend on skew (high value because (price-ema)/price is small)
     }
 };
